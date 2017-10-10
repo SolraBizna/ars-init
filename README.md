@@ -30,24 +30,6 @@ A future version of ARS-emu will add an optional feature to detect the presence 
 
 ## `nullinit.bin`
 
-A drop-in replacement for `etinit.bin` that does initialization and goes directly to your program, without stopping to make a pretty logo in between. It provides Standard Interrupts and AwaitNMI.
-
-`nullinit.bin` is useful for development work, where you want to test your game without sitting through the ET logo every time, but you also want to *eventually* include the ET logo without having to worry about compatibility issues cropping up. When ARS-emu becomes able to skip the standard ET intro, this file will be obsolete.
-
-To use it in a game, add a source file like the following:
-
-```65c02
-.INCLUDE "obj/common"
-
-.BANK 0 SLOT TopSlot ; TopSlot is the uppermost slot
-.ORGA $F800
-.SECTION "!InitImage" SIZE 2048 FORCE
-.INCBIN "path/to/nullinit.bin"
-.ENDS
-```
-
-## `nullinit.bin`
-
 A drop-in replacement for `etinit.bin` that does initialization and goes directly to your program, without stopping to make a pretty logo in between. It contains a lot of empty space, so that it takes up the same amount of space as `etinit.bin`. It provides Standard Interrupts and AwaitNMI.
 
 `nullinit.bin` is useful for development work, where you want to test your game without sitting through the ET logo every time, but you also want to *eventually* include the ET logo without having to worry about compatibility issues cropping up. When ARS-emu becomes able to skip the standard ET intro, this file will be obsolete.
