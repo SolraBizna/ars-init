@@ -1,0 +1,466 @@
+; Fake memory map.
+; (We will be inserted starting at $F800 in bank 0 of a "real" ROM.)
+.MEMORYMAP
+DEFAULTSLOT 0
+SLOT 0 $F800 $0800
+.ENDME
+.ROMBANKSIZE $800
+.ROMBANKS 1
+
+.INCLUDE "common.inc"
+
+.ENUM $0000
+g_NMICount DB ; must be $00
+l_zeroPtr DW
+l_IRQIndex DB
+.ENDE
+
+.ENUM $0250
+g_NMIHandler DW ; must be $0250
+g_IRQHandler DW ; must be $0252
+g_BRKHandler DW ; must be $0254
+.ENDE
+
+.ORGA $FFFA
+.SECTION "!Vectors" FORCE
+.DW nmi, reset, irq
+.ENDS
+
+.ORG 0
+.SECTION "ETlogo_bin" ALIGN 256
+ETlogo_tiles_start:
+.DB 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+.INCBIN "src/ETlogo_1.bin" READ 208
+ETlogo_sprite_base:
+.INCBIN "src/ETlogo_2.bin" READ 528
+ETlogo_tiles_end:
+.DEFINE ETlogo_pages_long 3
+.EXPORT ETlogo_pages_long
+ETlogo_palette:
+.DB $FF, 80, 64, 48, 32, 16, 0, $FF, $FF, $FF, 80, 80, $FF, $FF, 80, 80
+.DB $FF
+.ENDS
+
+.ORGA $F800
+.SECTION "Text" FORCE
+.INCBIN "src/licensed_text.bin"
+licensed_text_end:
+.DEFINE licensed_tilemap_start licensed_text_end - (19*4)
+.DEFINE tilemap_write_start $7C00 + 6 + 17*32
+.EXPORT licensed_tilemap_start, tilemap_write_start
+.ENDS
+
+.ORG 0
+.SECTION "Reset"
+reset:
+	; Very first thing! Set vectors
+	LDA #<logoNMI
+	STA g_NMIHandler
+	LDA #>logoNMI
+	STA g_NMIHandler+1
+	LDA #<logoIRQ
+	STA g_IRQHandler
+	LDA #>logoIRQ
+	STA g_IRQHandler+1
+	LDA #<stdBRK
+	STA g_BRKHandler
+	LDA #>stdBRK
+	STA g_BRKHandler+1
+	; Initialize stack
+	LDX #$FF
+	TXS
+	; Zero out the APU and PPU registers
+	JSR zeroAPUPPU
+	; Set up for the logo
+	LDA #4
+	STA r_BGScrollX
+	STA r_BGScrollY
+	LDA #1
+	STA r_BGPalettes
+	STA r_OLPalette
+	STA r_BGTileBases
+	; Zero the VRAM
+	LDX #0
+	LDY #0
+-	STZ r_VRAMPort
+	DEX
+	BNE -
+	DEY
+	BNE -
+	; Zero the CRAM and initialize the overlay tilemap
+	LDA #$80
+-	STZ r_CRAMPort
+	STA $7C00,X
+	STA $7D00,X
+	STA $7E00,X
+	STA $7F00,X
+	DEX
+	BNE -
+	; Nullify the sprites
+	LDA #$FF
+	LDX #64
+-	STZ r_SSMPort
+	STA r_SSMPort
+	STZ r_SSMPort
+	STZ r_SSMPort
+	DEX
+	BNE -
+	; Upload the tiles
+	LDA #$10
+	STA r_VRAMPage
+	LDA #>ETlogo_tiles_start-1
+	LDX #ETlogo_pages_long
+-	INA
+	STA r_VRAMDMA
+	DEX
+	BNE -
+	; Write the tilemap
+	LDX #0
+--	LDA _tilemapScript.W,X
+	BEQ +
+	STA r_VRAMPage
+	INX
+	LDA _tilemapScript.W,X
+	STA r_VRAMIndex
+	INX
+	LDA _tilemapScript.W,X
+	INX
+	LDY _tilemapScript.W,X
+	INX
+-	STA r_VRAMPort
+	DEY
+	BEQ --
+	CLC
+	ADC #4
+	BRA -
++	; Write the palette
+	LDX #0
+	STZ r_CRAMIndex
+-	LDA ETlogo_palette.W,X
+	STA r_CRAMPort
+	INX
+	CPX #17
+	BMI -
+	; Load up the sprites
+	STZ r_SSMIndex
+	STZ r_SAMIndex
+	LDX #0
+-	LDA _spriteScript.W,X
+	STA r_SSMPort
+	INX
+	CPX #20
+	BMI -
+	LDX #0
+-	LDA _spriteAttrs.W,X
+	STA r_SAMPort
+	INX
+	CPX #5
+	BMI -
+	; Fire up the overlay
+	LDX #19
+-	LDA licensed_tilemap_start.W - 1, X
+	STA tilemap_write_start.W - 1, X
+	LDA licensed_tilemap_start.W - 1 + 19, X
+	STA tilemap_write_start.W - 1 + 32, X
+	LDA licensed_tilemap_start.W - 1 + 38, X
+	STA tilemap_write_start.W - 1 + 64, X
+	LDA licensed_tilemap_start.W - 1 + 57, X
+	STA tilemap_write_start.W - 1 + 96, X
+	DEX
+	BNE -
+	; Initialized! Let's do the audio logo and the fade-in
+	LDA #$C0
+	STA r_ColorMod
+	LDA #$F8
+	STA r_Multi
+	CLI
+	; Wait for the frame boundary
+	JSR awaitNMI
+	; Initialize the APU for the audio logo
+	LDX #0
+-	LDA _audioScript.W, X
+	STA $0220,X
+	INX
+	CPX #24
+	BMI -
+	; Over 32 frames, increase the volume of channels 1 through 3 to 1/2
+	; (and reset the waveform on the first frame)
+	LDA #128
+-	INA
+	CMP #8
+	BNE +
+	LDX #$E0
+	STX r_ColorMod
++	CMP #16
+	BNE ++
+	STZ r_ColorMod
+++	STA r_VoiceVolume
+	STA r_VoiceVolume+1
+	STA r_VoiceVolume+2
+	JSR awaitNMI
+	AND #$7F
+	CMP #32
+	BNE -
+	; Ramp up the next four voices, 16 frames each
+	LDX #3
+--	LDA #128
+-	INA
+	INA
+	STA r_VoiceVolume,X
+	JSR awaitNMI
+	AND #$7F
+	CMP #32
+	BNE -
+	INX
+	CPX #7
+	BNE --
+	; Wait 32 frames
+	LDX #32
+-	JSR awaitNMI
+	DEX
+	BNE -
+	; Do the pitch slide, turning it into a major chord
+	LDX #15
+-	INC r_VoiceRateLo+1
+	INC r_VoiceRateLo+4
+	JSR awaitNMI
+	INC r_VoiceRateLo+4
+	JSR awaitNMI
+	DEX
+	BNE -
+	; Fade out audio over 64 frames
+	; Also fade out video in 8-frame increments
+	LDA #31
+-	CMP #23
+	BEQ +
+	CMP #15
+	BEQ ++
+	CMP #8
+	BEQ +++
+--	STA r_VoiceVolume
+	STA r_VoiceVolume+1
+	STA r_VoiceVolume+2
+	STA r_VoiceVolume+3
+	STA r_VoiceVolume+4
+	STA r_VoiceVolume+5
+	STA r_VoiceVolume+6
+	JSR awaitNMI
+	JSR awaitNMI
+	DEA
+	BPL -
+	BRA _rezero
++	PHA
+	LDA #$E0
+	STA r_ColorMod
+	PLA
+	BRA --
+++	PHA
+	LDA #$C0
+	STA r_ColorMod
+	PLA
+	BRA --
++++	STZ r_Multi
+	BRA --
+_rezero:
+	SEI
+	; Now zero everything for realsies
+	; Link the NMI and IRQ handlers to an RTI
+	LDA #<bareRTI
+	STA g_IRQHandler
+	STA g_NMIHandler
+	LDA #>bareRTI
+	STA g_IRQHandler+1
+	STA g_NMIHandler+1
+	; Zero the part of VRAM we used
+	STZ r_VRAMPage
+	LDX #0
+	LDY #32
+-	STZ r_VRAMPort
+	DEX
+	BNE -
+	DEY
+	BNE -
+	; Zero the part of CRAM we used
+	STZ r_CRAMIndex
+	LDX #20
+-	STZ r_CRAMPort
+	DEX
+	BNE -
+	; APU and PPU
+	JSR zeroAPUPPU
+	; Bus ports
+	STZ r_VRAMPage
+	STZ r_VRAMIndex ; this might affect a read later
+	STZ r_CRAMIndex
+	STZ r_SSMIndex
+	STZ r_SAMIndex
+	; IRQ scanline -> 255
+	LDA #$FF
+	STA r_IRQScanline
+	; Zero WRAM
+	STZ l_zeroPtr
+	LDA #3
+	STA l_zeroPtr+1
+	LDA #0
+	LDY #0
+-	STA (l_zeroPtr),Y
+	INY
+	BNE -
+	INC l_zeroPtr+1
+	BPL -
+	; Finally, the stack, zero page, and the page that overlaps with IO
+	; Y is already zero, and so is A
+-	STA $0000,Y
+	STA $0100,Y
+	INY
+	CPY #$56
+	BMI -
+-	STA $0000,Y
+	STA $0100,Y
+	STA $0200,Y
+	INY
+	BNE -
+	JMP $8000
+
+zeroAPUPPU:
+	; Mute and initialize the APU, and zero the PPU
+	LDX #16
+-	DEX
+	STZ $0200,X
+	STZ $0220,X
+	STZ $0230,X
+	BNE -
+	RTS
+
+_audioScript:
+; E minor chord, across two octaves
+.DB <224, <267, <336, <449, <534, <673, <899, <0
+.DB >224, >267, >336, >449, >534, >673, >899, >0
+; first three voices are left sawtooth waves, next four are right squares
+.DB 32+128, 32+128, 32+128, 16+64, 16+64, 16+64, 16+64, 0
+
+_tilemapScript:
+.DB $01, $8E
+.DB 1, 4
+.DB $01, $AE
+.DB 2, 3
+.DB $01, $CE
+.DB 3, 3
+.DB $01, $EE
+.DB 4, 3
+.DB 0
+
+_spriteScript:
+.MACRO ETlogo_sprite
+.DB \1*8, \2*8;
+.DW ETlogo_sprite_base-ETlogo_tiles_start+\3*120+$1000;
+.ENDM
+	ETlogo_sprite 13, 11, 0, 5
+	ETlogo_sprite 14, 11, 1, 5
+	ETlogo_sprite 15, 11, 2, 5
+	ETlogo_sprite 16, 11, 3, 5
+	ETlogo_sprite 17, 11, 4, 2
+_spriteAttrs:
+.DB 32, 32, 32, 32, 8
+.ENDS
+
+.ORG 0
+.SECTION "IRQ"
+irq:
+	PHX
+	TSX
+	PHA
+	INX
+	INX
+	LDA #$10
+	BIT $0100,X
+	BNE _isBRK
+	PLA
+	PLX
+	JMP (g_IRQHandler)
+_isBRK:
+	PLA
+	PLX
+	JMP (g_BRKHandler)
+
+logoIRQ:
+	PHA
+	PHX
+	LDX #$11
+	STX r_CRAMIndex
+	INC r_CRAMPort
+	INC r_CRAMPort
+	INC r_CRAMPort
+	LDX l_IRQIndex
+	INX
+	STX l_IRQIndex
+	LDA irqTable.W,X
+	STA r_IRQScanline
+	PLX
+	PLA
+	RTI
+irqTable:
+.DB 94, 97, 100, 103, 106, 110, 113, 116, 119, 122, 255
+.ENDS
+
+.ORGA $FFCB
+.SECTION "BRK" FORCE
+stdBRK:
+	LDX #0
+-	LDA _brkMessage.W,X
+	BEQ +
+	CLV
+	STA r_DebugPort
+	BVS -
+	INX
+	BRA -
++	STP
+_brkMessage:
+.DB "BRK!", 13, 10, 0
+.ENDS
+
+.ORGA $FFC1
+.SECTION "!AwaitNMI" FORCE
+awaitNMI:
+	PHA
+	LDA g_NMICount
+-	WAI
+	CMP g_NMICount
+	BEQ -
+	PLA
+	RTS
+.ENDS
+
+.ORG 0
+.SECTION "NMI"
+nmi:
+	INC g_NMICount
+	JMP (g_NMIHandler)
+
+logoNMI:
+	PHA
+	LDA #$11
+	STA r_CRAMIndex
+	LDA #65
+	STA r_CRAMPort
+	LDA #33
+	STA r_CRAMPort
+	LDA #1
+	STA r_CRAMPort
+	STZ l_IRQIndex
+	LDA irqTable.W
+	STA r_IRQScanline
+	PLA
+bareRTI:
+	RTI
+.ENDS
+
+.ORG 0
+.SECTION "!Copyright"
+.DB "(C)1987 Eiling Technologies"
+.ENDS
+
+.ORGA $FFE3
+.SECTION "!MysteryAuthor" FORCE
+.DB "written by s. q. devlin"
+.ENDS

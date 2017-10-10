@@ -1,0 +1,2 @@
+board id:ETARS
+  rom name=bin/etinit.bin size=2048

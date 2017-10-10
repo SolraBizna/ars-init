@@ -1,0 +1,18 @@
+; this file was created with wlalink by ville helin <vhelin@iki.fi>.
+; wla symbolic information for "bin/stdint.bin".
+
+[labels]
+00:ffe3 irq
+00:fff4 _isBRK
+00:ffcb stdBRK
+00:ffdc _brkMessage
+00:ffc1 awaitNMI
+00:ffbc nmi
+
+[definitions]
+00000011 _sizeof_irq
+00000005 _sizeof__isBRK
+00000011 _sizeof_stdBRK
+00000007 _sizeof__brkMessage
+0000000a _sizeof_awaitNMI
+00000005 _sizeof_nmi

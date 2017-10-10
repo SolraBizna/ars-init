@@ -1,0 +1,80 @@
+; Fake memory map.
+; (We will be inserted starting at $FFBC in one or more banks of a "real" ROM.)
+.MEMORYMAP
+DEFAULTSLOT 0
+SLOT 0 65536-68 68
+.ENDME
+.ROMBANKSIZE 68
+.ROMBANKS 1
+
+.INCLUDE "common.inc"
+
+.ENUM $0000
+g_NMICount DB ; must be $00
+.ENDE
+
+.ENUM $0250
+g_NMIHandler DW ; must be $0250
+g_IRQHandler DW ; must be $0252
+g_BRKHandler DW ; must be $0254
+.ENDE
+
+.ORGA $FFFA
+.SECTION "!Vectors" FORCE
+.DW nmi, 0, irq
+.ENDS
+
+.ORG 0
+.SECTION "IRQ"
+irq:
+	PHX
+	TSX
+	PHA
+	INX
+	INX
+	LDA #$10
+	BIT $0100,X
+	BNE _isBRK
+	PLA
+	PLX
+	JMP (g_IRQHandler)
+_isBRK:
+	PLA
+	PLX
+	JMP (g_BRKHandler)
+.ENDS
+
+.ORGA $FFCB
+.SECTION "BRK" FORCE
+stdBRK:
+	LDX #0
+-	LDA _brkMessage.W,X
+	BEQ +
+	CLV
+	STA r_DebugPort
+	BVS -
+	INX
+	BRA -
++	STP
+_brkMessage:
+.DB "BRK!", 13, 10, 0
+.ENDS
+
+.ORGA $FFC1
+.SECTION "!AwaitNMI" FORCE
+awaitNMI:
+        PHA
+        LDA g_NMICount
+-       WAI
+        CMP g_NMICount
+        BEQ -
+        PLA
+        RTS
+.ENDS
+
+.ORG 0
+.SECTION "NMI"
+nmi:
+	INC g_NMICount
+	JMP (g_NMIHandler)
+.ENDS

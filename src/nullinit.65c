@@ -1,0 +1,163 @@
+; Fake memory map.
+; (We will be inserted starting at $F800 in bank 0 of a "real" ROM.)
+.MEMORYMAP
+DEFAULTSLOT 0
+SLOT 0 $F800 $0800
+.ENDME
+.ROMBANKSIZE $800
+.ROMBANKS 1
+
+.INCLUDE "common.inc"
+
+.ENUM $0000
+g_NMICount DB ; must be $00
+l_zeroPtr DW
+.ENDE
+
+.ENUM $0250
+g_NMIHandler DW ; must be $0250
+g_IRQHandler DW ; must be $0252
+g_BRKHandler DW ; must be $0254
+.ENDE
+
+.ORGA $FFFA
+.SECTION "!Vectors" FORCE
+.DW nmi, reset, irq
+.ENDS
+
+.ORG 0
+.SECTION "Reset"
+reset:
+	; Very first thing! Set vectors
+	LDA #<bareRTI
+	STA g_NMIHandler
+	LDA #>bareRTI
+	STA g_NMIHandler+1
+	LDA #<bareRTI
+	STA g_IRQHandler
+	LDA #>bareRTI
+	STA g_IRQHandler+1
+	LDA #<stdBRK
+	STA g_BRKHandler
+	LDA #>stdBRK
+	STA g_BRKHandler+1
+	; Initialize stack
+	LDX #$FF
+	TXS
+	; Mute and initialize the APU, and zero the PPU
+	LDX #16
+-	DEX
+	STZ $0200,X
+	STZ $0220,X
+	STZ $0230,X
+	BNE -
+	; Zero the VRAM and CRAM
+	LDX #0
+	LDY #0
+-	STZ r_VRAMPort
+	DEX
+	BNE -
+	STZ r_CRAMPort
+	DEY
+	BNE -
+	; Nullify the sprites
+	LDA #$FF
+	LDX #64
+-	STZ r_SSMPort
+	STA r_SSMPort
+	STZ r_SSMPort
+	STZ r_SSMPort
+	DEX
+	BNE -
+	; Zero the bus ports
+	STZ r_VRAMPage
+	STZ r_VRAMIndex ; this might affect a read later
+	STZ r_CRAMIndex
+	STZ r_SSMIndex
+	STZ r_SAMIndex
+	; IRQ scanline -> 255
+	LDA #$FF
+	STA r_IRQScanline
+	; Zero WRAM
+	STZ l_zeroPtr
+	LDA #3
+	STA l_zeroPtr+1
+	LDA #0
+	LDY #0
+-	STA (l_zeroPtr),Y
+	INY
+	BNE -
+	INC l_zeroPtr+1
+	BPL -
+	; Finally, the stack, zero page, and the page that overlaps with IO
+	; Y is already zero, and so is A
+-	STA $0000,Y
+	STA $0100,Y
+	INY
+	CPY #$56
+	BMI -
+-	STA $0000,Y
+	STA $0100,Y
+	STA $0200,Y
+	INY
+	BNE -
+	JMP $8000
+
+.ENDS
+
+.ORG 0
+.SECTION "IRQ"
+irq:
+	PHX
+	TSX
+	PHA
+	INX
+	INX
+	LDA #$10
+	BIT $0100,X
+	BNE _isBRK
+	PLA
+	PLX
+	JMP (g_IRQHandler)
+_isBRK:
+	PLA
+	PLX
+	JMP (g_BRKHandler)
+.ENDS
+
+.ORGA $FFCB
+.SECTION "BRK" FORCE
+stdBRK:
+	LDX #0
+-	LDA _brkMessage.W,X
+	BEQ +
+	CLV
+	STA r_DebugPort
+	BVS -
+	INX
+	BRA -
++	STP
+_brkMessage:
+.DB "BRK!", 13, 10, 0
+.ENDS
+
+.ORGA $FFC1
+.SECTION "!AwaitNMI" FORCE
+awaitNMI:
+        PHA
+        LDA g_NMICount
+-       WAI
+        CMP g_NMICount
+        BEQ -
+        PLA
+        RTS
+.ENDS
+
+.ORG 0
+.SECTION "NMI"
+nmi:
+	INC g_NMICount
+	JMP (g_NMIHandler)
+bareRTI:
+	RTI
+.ENDS
