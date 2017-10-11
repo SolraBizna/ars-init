@@ -48,7 +48,7 @@ To use it in a game, add a source file like the following:
 
 ## `stdint.bin`
 
-This file is a minimal set of Standard Interupts, suitable for insertion into any bank that will sometimes be mapped into the top slot.
+This file is a minimal set of Standard Interrupts, suitable for insertion into any bank that will sometimes be mapped into the top slot.
 
 To use it in a game, add a source file like the following for every bank that needs it:
 
