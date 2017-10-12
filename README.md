@@ -80,7 +80,7 @@ Memory addresses you can't safely use for other purposes with Standard Interrupt
 
 # AwaitNMI
 
-`etinit.bin` has a perfectly serviceable wait-for-NMI routine located at `$ffc1`. `nullinit.bin` has it, too.
+`etinit.bin` has a perfectly serviceable wait-for-NMI routine located at `$ffc1`. `nullinit.bin` has it, too. Do `JSR $ffc1` and it will return after waiting for at least one NMI to occur and be handled. It uses `WAI` to save power while waiting.
 
 # Kayfabe
 
