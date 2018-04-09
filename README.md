@@ -48,27 +48,27 @@ To use it in a game, add a source file like the following:
 
 ## `stdint.bin`
 
-This file is a minimal set of Standard Interrupts, suitable for insertion into any bank that will sometimes be mapped into the top slot.
+This file is a minimal set of Standard Interrupts, suitable for insertion into any bank that will sometimes be mapped into the top slot. It also provides AwaitNMI in the expected location.
 
 To use it in a game, add a source file like the following for every bank that needs it:
 
 ```65c02
 .INCLUDE "obj/common"
 
-.BANK 0 SLOT TopSlot ; TopSlot is the uppermost slot
-.ORGA $F800
+.BANK x SLOT TopSlot ; TopSlot is the uppermost slot
+.ORGA $FFBC
 .SECTION "!InitImage" SIZE 2048 FORCE
 .INCBIN "path/to/nullinit.bin"
 .ENDS
 ```
 
-Note: `etinit.bin` and `nullinit.bin` initialize the NMI and IRQ handlers with a pointer to an `RTI` instruction. There is NOT an `RTI` at the same address in `stdint.bin`! If you use `stdint.bin` and do not use NMI or IRQ (or both), you must manually set the handler to an `RTI` instruction!
+Do **not** put it in bank 0! It doesn't provide reset code!
 
-Note 2: `stdint.bin` does not provide Standard Interrupts or AwaitNMI!
+Note: `etinit.bin` and `nullinit.bin` initialize the NMI and IRQ handlers with a pointer to an `RTI` instruction. There is NOT an `RTI` at the same address in `stdint.bin`! If you use `stdint.bin` and do not use NMI or IRQ (or both), you must manually set the handler to an `RTI` instruction!
 
 # Standard Interrupts
 
-- Hardware is initialized for you on reset. Control enters "your program" at `$8000`.
+- Hardware is initialized for you on reset. Control enters "your program" at `$00:8000`.
 - You may provide an NMI handler by writing its entry point address to `$0250`. Whether or not you provide one, `$00` will be incremented every NMI.
 - You may provide an IRQ handler by writing its entry point address to `$0252`. It will only be called on an actual IRQ.
 - You may provide a BRK handler by writing its entry point address to `$0254`. If you don't, a default handler that writes a message to the Debug Port and does `STP` will be used. (The address of this default handler is `$FFCB`.)
@@ -80,7 +80,7 @@ Memory addresses you can't safely use for other purposes with Standard Interrupt
 
 # AwaitNMI
 
-`etinit.bin` has a perfectly serviceable wait-for-NMI routine located at `$ffc1`. `nullinit.bin` has it, too. Do `JSR $ffc1` and it will return after waiting for at least one NMI to occur and be handled. It uses `WAI` to save power while waiting.
+`etinit.bin` has a perfectly serviceable wait-for-NMI routine located at `$ffc1`. `nullinit.bin` and `stdint.bin` have it, too. Do `JSR $ffc1` and it will return after waiting for at least one NMI to occur and be handled. It uses `WAI` to save power while waiting.
 
 # Kayfabe
 
@@ -92,5 +92,5 @@ Like in professional wrestling, I have adopted a deliberate strategy of acting, 
 - Have a fictional copyright notice on the main menu.
     - Don't use real people or companies in a misleading way or they'll probably sue you and win.
     - *Do* take reasonable measures to ensure that you can still genuinely claim copyright on the game.
-- Include dated cultural and technological references: floppy disks, communists, landlines, "cyberspace", CRTs, newspapers, etc.
+- Include dated cultural and technological references: floppy disks, communists, landlines, "cyberspace", CRTs, newspapers, videotape, etc.
 
