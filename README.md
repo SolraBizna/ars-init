@@ -57,8 +57,8 @@ To use it in a game, add a source file like the following for every bank that ne
 
 .BANK x SLOT TopSlot ; TopSlot is the uppermost slot
 .ORGA $FFBC
-.SECTION "!InitImage" SIZE 2048 FORCE
-.INCBIN "path/to/nullinit.bin"
+.SECTION "!Interrupts" SIZE 68 FORCE
+.INCBIN "path/to/stdint.bin"
 .ENDS
 ```
 
