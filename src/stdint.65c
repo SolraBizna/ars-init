@@ -19,50 +19,14 @@ g_IRQHandler DW ; must be $0252
 g_BRKHandler DW ; must be $0254
 .ENDE
 
-.ORGA $FFFA
-.SECTION "!Vectors" FORCE
-.DW nmi, 0, irq
-.ENDS
+.ORGA $FFBC
+.SECTION "!StdInt" FORCE
+stdint:
+@nmi:
+	INC g_NMICount
+	JMP (g_NMIHandler)
 
-.ORG 0
-.SECTION "IRQ"
-irq:
-	PHX
-	TSX
-	PHA
-	INX
-	INX
-	LDA #$10
-	BIT $0100,X
-	BNE _isBRK
-	PLA
-	PLX
-	JMP (g_IRQHandler)
-_isBRK:
-	PLA
-	PLX
-	JMP (g_BRKHandler)
-.ENDS
-
-.ORGA $FFCB
-.SECTION "BRK" FORCE
-stdBRK:
-	LDX #0
--	LDA _brkMessage.W,X
-	BEQ +
-	CLV
-	STA r_DebugPort
-	BVS -
-	INX
-	BRA -
-+	STP
-_brkMessage:
-.DB "BRK!", 13, 10, 0
-.ENDS
-
-.ORGA $FFC1
-.SECTION "!AwaitNMI" FORCE
-awaitNMI:
+@awaitNMI:
         PHA
         LDA g_NMICount
 -       WAI
@@ -70,11 +34,41 @@ awaitNMI:
         BEQ -
         PLA
         RTS
-.ENDS
 
-.ORG 0
-.SECTION "NMI"
-nmi:
-	INC g_NMICount
-	JMP (g_NMIHandler)
+@stdBRK:
+	LDX #0
+-	LDA @@brkMessage.W,X
+	BEQ +
+	CLV
+	STA r_DebugPort
+	BVS -
+	INX
+	BRA -
++	STP
+@@brkMessage:
+.DB "BRK!", 13, 10, 0
+
+@irq:
+	PHX
+	TSX
+	PHA
+	INX
+	INX
+	LDA #$10
+	BIT $0100,X
+	BNE @@isBRK
+	PLA
+	PLX
+	JMP (g_IRQHandler)
+@@isBRK:
+	PLA
+	PLX
+	JMP (g_BRKHandler)
+
+@weed:
+.DB 0
+
+@vectors:
+.DW @nmi, 0, @irq
+
 .ENDS
